@@ -1,6 +1,8 @@
 # FlowForge Platform
 
-FlowForge Platform is a production-oriented, multi-tenant workflow automation backend built with FastAPI, PostgreSQL, Redis, Celery, and JWT-based authentication.
+FlowForge Platform is a portfolio workflow automation backend built with FastAPI, PostgreSQL, Redis, Celery, and JWT-based authentication. It is a local demonstration and has no production customers or measured production scale.
+
+The repository explores organization-aware workflow execution and asynchronous jobs. The code, tests, and CI configuration are available for inspection; feature descriptions below refer to this project, not client work.
 
 ## Core capabilities
 
@@ -38,7 +40,7 @@ pip install -e ".[dev]"
 3. Copy the example environment file:
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
 4. Start the infrastructure:
