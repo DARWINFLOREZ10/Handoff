@@ -33,22 +33,32 @@ async def get_current_user(
             raise ValueError("Missing subject")
         user_id = UUID(subject)
     except (JWTError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token."
+        ) from exc
 
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user not found.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user not found."
+        )
     return user
 
 
-async def get_current_tenant_id(x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID")) -> UUID:
+async def get_current_tenant_id(
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-ID"),
+) -> UUID:
     if x_tenant_id is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Tenant-ID header is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="X-Tenant-ID header is required."
+        )
     try:
         return UUID(x_tenant_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="X-Tenant-ID must be a valid UUID.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="X-Tenant-ID must be a valid UUID."
+        ) from exc
 
 
 async def get_tenant_or_404(

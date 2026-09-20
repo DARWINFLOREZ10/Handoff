@@ -5,7 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
-from flowforge.db.models import AuditAction, ExecutionStatus, JobStatus, TenantPlan, TenantRole, WorkflowStatus
+from flowforge.db.models import (
+    AuditAction,
+    ExecutionStatus,
+    JobStatus,
+    TenantPlan,
+    TenantRole,
+    WorkflowStatus,
+)
 
 
 class MessageResponse(BaseModel):

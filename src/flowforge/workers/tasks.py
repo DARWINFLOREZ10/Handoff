@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from flowforge.workers.celery_app import celery_app
 
@@ -32,4 +32,4 @@ def generate_report_task(tenant_id: str, report_name: str) -> dict[str, str]:
 
 @celery_app.task(name="flowforge.cleanup_scheduled_jobs")
 def cleanup_scheduled_jobs_task() -> dict[str, str]:
-    return {"status": "completed", "completed_at": datetime.now(timezone.utc).isoformat()}
+    return {"status": "completed", "completed_at": datetime.now(UTC).isoformat()}

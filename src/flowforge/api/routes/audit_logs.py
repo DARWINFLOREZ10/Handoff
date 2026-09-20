@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -20,6 +20,6 @@ async def list_audit_logs() -> list[AuditLogResponse]:
             entity_type="system",
             entity_id=None,
             metadata={},
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
     ]

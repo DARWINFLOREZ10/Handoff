@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from flowforge.api.deps import get_current_user, get_tenant_or_404, get_db_session
+from flowforge.api.deps import get_current_user, get_db_session, get_tenant_or_404
 from flowforge.api.schemas import JobQueueRequest, JobRead, JobRetryRequest, MessageResponse
 from flowforge.db.models import AuditAction, AuditLog, Job, JobStatus, Organization, User
 
@@ -40,7 +40,13 @@ async def queue_job(
         )
     )
     await session.commit()
-    return JobRead(id=job.id, job_type=job.job_type, status=job.status, queue_name=job.queue_name, attempts=job.attempts)
+    return JobRead(
+        id=job.id,
+        job_type=job.job_type,
+        status=job.status,
+        queue_name=job.queue_name,
+        attempts=job.attempts,
+    )
 
 
 @router.post("/retry", response_model=MessageResponse)
@@ -55,4 +61,6 @@ async def scheduled_jobs() -> list[JobRead]:
 
 @router.get("/{job_id}/status", response_model=JobRead)
 async def job_status(job_id: UUID) -> JobRead:
-    return JobRead(id=job_id, job_type="generic", status=JobStatus.queued, queue_name="default", attempts=0)
+    return JobRead(
+        id=job_id, job_type="generic", status=JobStatus.queued, queue_name="default", attempts=0
+    )

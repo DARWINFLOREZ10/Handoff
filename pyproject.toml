@@ -51,6 +51,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
+ignore = ["B008", "UP042"]
+
+# FastAPI dependencies are declared in endpoint signatures. SQLAlchemy persists
+# the string values of these enums, so the explicit str + Enum form is retained.
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers --cov=flowforge --cov-report=term-missing --cov-fail-under=80"

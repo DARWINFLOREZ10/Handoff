@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import jwt
@@ -19,9 +19,11 @@ def verify_password(password: str, hashed_password: str) -> bool:
     return password_context.verify(password, hashed_password)
 
 
-def create_token(subject: str, token_type: str, expires_delta: timedelta, extra: dict[str, Any] | None = None) -> str:
+def create_token(
+    subject: str, token_type: str, expires_delta: timedelta, extra: dict[str, Any] | None = None
+) -> str:
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": subject,
         "type": token_type,

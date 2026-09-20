@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from flowforge.api.rate_limiter import limiter, rate_limit_handler
 from flowforge.api.router import api_router
 from flowforge.core.config import get_settings
 from flowforge.core.logging import configure_logging
-from flowforge.api.rate_limiter import rate_limit_handler, limiter
 
 
 def create_app() -> FastAPI:

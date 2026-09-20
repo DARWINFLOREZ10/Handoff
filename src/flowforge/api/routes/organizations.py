@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
 from uuid import UUID
 
@@ -16,7 +16,15 @@ from flowforge.api.schemas import (
     OrganizationRead,
     SwitchTenantRequest,
 )
-from flowforge.db.models import AuditAction, AuditLog, Membership, Organization, OrganizationInvitation, TenantRole, User
+from flowforge.db.models import (
+    AuditAction,
+    AuditLog,
+    Membership,
+    Organization,
+    OrganizationInvitation,
+    TenantRole,
+    User,
+)
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -30,7 +38,14 @@ async def create_organization(
     organization = Organization(name=payload.name, slug=payload.slug, plan=payload.plan)
     session.add(organization)
     await session.flush()
-    session.add(Membership(tenant_id=organization.id, user_id=current_user.id, role=TenantRole.owner, invited_by_user_id=current_user.id))
+    session.add(
+        Membership(
+            tenant_id=organization.id,
+            user_id=current_user.id,
+            role=TenantRole.owner,
+            invited_by_user_id=current_user.id,
+        )
+    )
     session.add(
         AuditLog(
             tenant_id=organization.id,
@@ -42,7 +57,9 @@ async def create_organization(
         )
     )
     await session.commit()
-    return OrganizationRead(id=organization.id, name=organization.name, slug=organization.slug, plan=organization.plan)
+    return OrganizationRead(
+        id=organization.id, name=organization.name, slug=organization.slug, plan=organization.plan
+    )
 
 
 @router.post("/{tenant_id}/invite", response_model=MessageResponse)
@@ -62,7 +79,7 @@ async def invite_user(
         role=payload.role,
         token=token_urlsafe(32),
         invited_by_user_id=current_user.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     session.add(invitation)
     await session.flush()
@@ -100,9 +117,15 @@ async def manage_member(
     if tenant_id != tenant.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found.")
 
-    return MessageResponse(detail=f"Membership {payload.membership_id} updated for tenant {tenant.id}.")
+    return MessageResponse(
+        detail=f"Membership {payload.membership_id} updated for tenant {tenant.id}."
+    )
 
 
 @router.post("/switch-tenant", response_model=MessageResponse)
-async def switch_tenant(payload: SwitchTenantRequest, current_user: User = Depends(get_current_user)) -> MessageResponse:
-    return MessageResponse(detail=f"Tenant switched to {payload.tenant_id} for user {current_user.id}.")
+async def switch_tenant(
+    payload: SwitchTenantRequest, current_user: User = Depends(get_current_user)
+) -> MessageResponse:
+    return MessageResponse(
+        detail=f"Tenant switched to {payload.tenant_id} for user {current_user.id}."
+    )

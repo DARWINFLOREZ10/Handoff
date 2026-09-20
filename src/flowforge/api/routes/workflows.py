@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from flowforge.api.deps import get_current_user, get_tenant_or_404, get_db_session
+from flowforge.api.deps import get_current_user, get_db_session, get_tenant_or_404
 from flowforge.api.schemas import (
     ExecutionRead,
     MessageResponse,
@@ -16,7 +16,14 @@ from flowforge.api.schemas import (
     WorkflowRetryRequest,
     WorkflowUpdateRequest,
 )
-from flowforge.db.models import ExecutionStatus, Workflow, WorkflowExecution, WorkflowStatus, User, Organization
+from flowforge.db.models import (
+    ExecutionStatus,
+    Organization,
+    User,
+    Workflow,
+    WorkflowExecution,
+    WorkflowStatus,
+)
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -103,4 +110,12 @@ async def cancel_execution(payload: WorkflowCancelRequest) -> MessageResponse:
 
 @router.get("/{workflow_id}/history", response_model=list[ExecutionRead])
 async def execution_history(workflow_id: UUID) -> list[ExecutionRead]:
-    return [ExecutionRead(id=workflow_id, workflow_id=workflow_id, status=ExecutionStatus.queued, correlation_id=None, duration_ms=None)]
+    return [
+        ExecutionRead(
+            id=workflow_id,
+            workflow_id=workflow_id,
+            status=ExecutionStatus.queued,
+            correlation_id=None,
+            duration_ms=None,
+        )
+    ]
