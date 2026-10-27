@@ -1,8 +1,8 @@
-# FlowForge
+# Handoff
 
-A workflow run that leaves the request. Creating a run commits the run and its job together. A worker performs one HTTP step, with a retry budget and an idempotency key. Tenant routes require a membership row.
+A workflow run that leaves the request. I commit the run and its job together. A worker performs one HTTP step, with a retry budget and an idempotency key. Tenant routes require a membership row.
 
-**Status:** portfolio project. One step type, one worker process, no production customers.
+**Status:** I built this as a portfolio system. One step type, one worker process, no production customers.
 
 ## Problem
 
