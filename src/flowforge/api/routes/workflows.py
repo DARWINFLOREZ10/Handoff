@@ -1,121 +1,162 @@
 from __future__ import annotations
 
-from uuid import UUID
+import logging
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from flowforge.api.deps import get_current_user, get_db_session, get_tenant_or_404
-from flowforge.api.schemas import (
-    ExecutionRead,
-    MessageResponse,
-    WorkflowCancelRequest,
-    WorkflowCreateRequest,
-    WorkflowExecuteRequest,
-    WorkflowRead,
-    WorkflowRetryRequest,
-    WorkflowUpdateRequest,
-)
+from flowforge.api.deps import get_current_user, get_db_session, require_member
+from flowforge.api.schemas import RunCreateRequest, RunRead, WorkflowCreateRequest, WorkflowRead
 from flowforge.db.models import (
+    AuditAction,
+    AuditLog,
     ExecutionStatus,
-    Organization,
+    Job,
+    JobStatus,
+    Membership,
     User,
     Workflow,
     WorkflowExecution,
-    WorkflowStatus,
 )
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
+logger = logging.getLogger(__name__)
 
 
-@router.post("", response_model=WorkflowRead)
-async def create_workflow(
-    payload: WorkflowCreateRequest,
-    tenant: Organization = Depends(get_tenant_or_404),
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-) -> WorkflowRead:
-    workflow = Workflow(
-        tenant_id=tenant.id,
-        created_by_user_id=current_user.id,
-        name=payload.name,
-        description=payload.description,
-        trigger_type=payload.trigger_type,
-        definition=payload.definition,
-        status=WorkflowStatus.draft,
-    )
-    session.add(workflow)
-    await session.commit()
+def enqueue_delivery(job_id: UUID) -> None:
+    from flowforge.workers.tasks import deliver_job_task
+
+    try:
+        deliver_job_task.delay(str(job_id))
+    except Exception:
+        logger.exception("broker_unavailable job_id=%s", job_id)
+
+
+def _workflow_read(workflow: Workflow) -> WorkflowRead:
     return WorkflowRead(
         id=workflow.id,
         name=workflow.name,
         description=workflow.description,
-        status=workflow.status,
-        trigger_type=workflow.trigger_type,
-        version=workflow.version,
+        target_url=str(workflow.definition["url"]),
     )
 
 
-@router.patch("/{workflow_id}", response_model=WorkflowRead)
-async def update_workflow(
-    workflow_id: UUID,
-    payload: WorkflowUpdateRequest,
-) -> WorkflowRead:
-    return WorkflowRead(
-        id=workflow_id,
-        name=payload.name or "workflow",
-        description=payload.description,
-        status=payload.status or WorkflowStatus.draft,
-        trigger_type=payload.trigger_type or "manual",
-        version=1,
-    )
-
-
-@router.post("/{workflow_id}/execute", response_model=ExecutionRead)
-async def execute_workflow(
-    workflow_id: UUID,
-    payload: WorkflowExecuteRequest,
-    tenant: Organization = Depends(get_tenant_or_404),
+@router.post("", response_model=WorkflowRead, status_code=status.HTTP_201_CREATED)
+async def create_workflow(
+    payload: WorkflowCreateRequest,
+    membership: Membership = Depends(require_member),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-) -> ExecutionRead:
+) -> WorkflowRead:
+    workflow = Workflow(
+        tenant_id=membership.tenant_id,
+        created_by_user_id=current_user.id,
+        name=payload.name,
+        description=payload.description,
+        definition={"url": str(payload.target_url)},
+    )
+    session.add(workflow)
+    await session.flush()
+    session.add(
+        AuditLog(
+            tenant_id=membership.tenant_id,
+            actor_user_id=current_user.id,
+            action=AuditAction.workflow_created,
+            entity_type="workflow",
+            entity_id=str(workflow.id),
+            event_data={"url": str(payload.target_url)},
+        )
+    )
+    await session.commit()
+    return _workflow_read(workflow)
+
+
+@router.post("/{workflow_id}/runs", response_model=RunRead, status_code=status.HTTP_201_CREATED)
+async def start_run(
+    workflow_id: UUID,
+    payload: RunCreateRequest,
+    membership: Membership = Depends(require_member),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+) -> RunRead:
+    workflow = await session.get(Workflow, workflow_id)
+    if workflow is None or workflow.tenant_id != membership.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found.")
+
+    execution_id = uuid4()
+    job_id = uuid4()
     execution = WorkflowExecution(
-        tenant_id=tenant.id,
-        workflow_id=workflow_id,
+        id=execution_id,
+        tenant_id=membership.tenant_id,
+        workflow_id=workflow.id,
         triggered_by_user_id=current_user.id,
         status=ExecutionStatus.queued,
         input_payload=payload.input_payload,
-        correlation_id=payload.correlation_id,
+    )
+    job = Job(
+        id=job_id,
+        tenant_id=membership.tenant_id,
+        workflow_execution_id=execution_id,
+        status=JobStatus.queued,
+        payload={"url": workflow.definition["url"], "body": payload.input_payload},
+        attempts=0,
+        max_retries=3,
     )
     session.add(execution)
+    await session.flush()
+    session.add(job)
+    session.add(
+        AuditLog(
+            tenant_id=membership.tenant_id,
+            actor_user_id=current_user.id,
+            action=AuditAction.run_queued,
+            entity_type="workflow_execution",
+            entity_id=str(execution_id),
+            event_data={"job_id": str(job_id)},
+        )
+    )
     await session.commit()
-    return ExecutionRead(
+    enqueue_delivery(job_id)
+    return RunRead(
+        id=execution_id,
+        workflow_id=workflow.id,
+        status=ExecutionStatus.queued,
+        job_id=job_id,
+        job_status=JobStatus.queued,
+        attempts=0,
+        audit=[AuditAction.run_queued.value],
+    )
+
+
+@router.get("/{workflow_id}/runs/{run_id}", response_model=RunRead)
+async def get_run(
+    workflow_id: UUID,
+    run_id: UUID,
+    membership: Membership = Depends(require_member),
+    session: AsyncSession = Depends(get_db_session),
+) -> RunRead:
+    execution = await session.get(WorkflowExecution, run_id)
+    if (
+        execution is None
+        or execution.workflow_id != workflow_id
+        or execution.tenant_id != membership.tenant_id
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found.")
+    job_result = await session.execute(select(Job).where(Job.workflow_execution_id == execution.id))
+    job = job_result.scalar_one()
+    audit_result = await session.execute(
+        select(AuditLog.action)
+        .where(AuditLog.entity_id == str(execution.id))
+        .order_by(AuditLog.created_at.asc())
+    )
+    return RunRead(
         id=execution.id,
         workflow_id=execution.workflow_id,
         status=execution.status,
-        correlation_id=execution.correlation_id,
-        duration_ms=execution.duration_ms,
+        job_id=job.id,
+        job_status=job.status,
+        attempts=job.attempts,
+        audit=[action.value for action in audit_result.scalars().all()],
     )
-
-
-@router.post("/retry", response_model=MessageResponse)
-async def retry_execution(payload: WorkflowRetryRequest) -> MessageResponse:
-    return MessageResponse(detail=f"Execution {payload.execution_id} scheduled for retry.")
-
-
-@router.post("/cancel", response_model=MessageResponse)
-async def cancel_execution(payload: WorkflowCancelRequest) -> MessageResponse:
-    return MessageResponse(detail=f"Execution {payload.execution_id} cancelled.")
-
-
-@router.get("/{workflow_id}/history", response_model=list[ExecutionRead])
-async def execution_history(workflow_id: UUID) -> list[ExecutionRead]:
-    return [
-        ExecutionRead(
-            id=workflow_id,
-            workflow_id=workflow_id,
-            status=ExecutionStatus.queued,
-            correlation_id=None,
-            duration_ms=None,
-        )
-    ]

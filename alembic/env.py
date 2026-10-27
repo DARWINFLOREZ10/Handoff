@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from flowforge.core.config import get_settings
-from flowforge.db.base import Base
 from flowforge.db import models  # noqa: F401
+from flowforge.db.base import Base
 
 config = context.config
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+config.set_main_option("sqlalchemy.url", sync_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
 
 target_metadata = Base.metadata
 
@@ -25,7 +25,7 @@ def run_migrations_offline() -> None:
     """Run migrations in offline mode."""
 
     context.configure(
-        url=settings.database_url,
+        url=sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

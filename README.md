@@ -1,69 +1,55 @@
-# FlowForge Platform
+# Handoff
 
-FlowForge Platform is a portfolio workflow automation backend built with FastAPI, PostgreSQL, Redis, Celery, and JWT-based authentication. It is a local demonstration and has no production customers or measured production scale.
+A workflow run that leaves the request. I commit the run and its job together. A worker performs one HTTP step, with a retry budget and an idempotency key. Tenant routes require a membership row.
 
-The repository explores organization-aware workflow execution and asynchronous jobs. The code, tests, and CI configuration are available for inspection; feature descriptions below refer to this project, not client work.
+**Status:** I built this as a portfolio system. One step type, one worker process, no production customers.
 
-## Core capabilities
+## Problem
 
-- User authentication with email/password and Google OAuth
-- Multi-tenant organizations with membership-based roles
-- Workflow creation, execution, retries, cancellation, and history
-- Background jobs for email delivery, webhooks, API calls, report generation, and scheduled cleanup
-- Organization-aware rate limiting with plan-based policies
-- Audit logging for critical security and operational events
-- Reports for executions, success rate, duration, and usage
-- API key management for service integrations
+Work done inside the handler dies with the connection. A header that names an organization, without checking membership, is not tenancy.
 
-## Stack
+## Design
 
-- Python 3.12
-- FastAPI
-- PostgreSQL
-- Redis
-- Celery and Celery Beat
-- SQLAlchemy 2.0
-- Alembic
-- JWT and OAuth
-- Docker and Docker Compose
-- GitHub Actions
-
-## Local development
-
-1. Create a virtual environment with Python 3.12.
-2. Install dependencies:
-
-```bash
-pip install -e ".[dev]"
+```mermaid
+flowchart LR
+  Client[Client] --> API[FastAPI]
+  API --> DB[(PostgreSQL)]
+  API -->|after commit| Queue[Celery]
+  Queue --> Worker[Worker]
+  Worker --> DB
+  Worker --> Target[HTTP step]
 ```
 
-3. Copy the example environment file:
+- **Membership.** `X-Tenant-ID` must match a membership for the caller. No row is 403. An unknown organization is 404.
+- **One commit.** The run, the job, and the `run_queued` audit row commit together. The API enqueues only after that commit. If the broker is down, the job stays `queued`.
+- **One step.** The worker POSTs the workflow URL with the run payload and `Idempotency-Key: <job id>`. Failure returns the job to `queued` until three attempts, then `failed`. A finished job is not sent again.
+
+Register and login issue a JWT. Registration also creates a personal organization the user owns. `POST /api/v1/workflows` stores `target_url`. `POST /api/v1/workflows/{id}/runs` starts a run. `GET /api/v1/workflows/{id}/runs/{run_id}` returns status, attempts, and audit actions.
+
+## Run
+
+Python 3.12, PostgreSQL, and Redis.
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
 cp .env.example .env
-```
-
-4. Start the infrastructure:
-
-```bash
 docker compose up --build
 ```
 
-5. Run the API locally:
+For a database on localhost instead of the compose network, point `DATABASE_URL` at `127.0.0.1`. Apply the schema with `alembic upgrade head` if you are not starting from an empty volume that the tests migrate themselves.
 
-```bash
-uvicorn flowforge.main:app --reload
-```
+API: `http://127.0.0.1:8000/docs`. The worker container runs `celery -A flowforge.workers.celery_app.celery_app worker`.
 
-## Project structure
+## Tests
 
-- `src/flowforge/core` contains settings, security helpers, and logging.
-- `src/flowforge/db` contains the SQLAlchemy base, session, and domain models.
-- `src/flowforge/api` contains dependencies and HTTP routers.
-- `src/flowforge/workers` contains Celery application and task definitions.
+`pytest` applies the Alembic migration to PostgreSQL and covers membership (403 and 404), the single commit that stores the run and the job, retry, the attempt budget, and a success that is not delivered twice. CI runs Ruff, that suite, and a Docker build. Postgres and Redis are provided in CI; the tests do not need Redis because enqueue is isolated from the broker.
 
-## Deployment guidance
+## Limits
 
-For the first production release, Render or Railway is the recommended target because they reduce operational overhead while preserving a clean path to PostgreSQL, Redis, and container-based deployment.
+One HTTP step. One worker should run at a time: the row lock is held during the POST. Each database session opens its own connection. There is no lease, no scheduler, no second step type, and no Google OAuth, reports, or API keys. A crashed worker can leave a call in flight and send it again; the receiver dedupes on the job id. This is not a multi-region workflow engine.
 
-AWS or Azure can be introduced later when the platform needs more control over networking, observability, or compliance.
+## Decisions
+
+- [ADR 001 Async boundary](docs/adr-001-async-boundary.md)
