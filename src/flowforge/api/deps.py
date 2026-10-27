@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flowforge.core.config import get_settings
-from flowforge.db.models import Organization, User
+from flowforge.db.models import Membership, Organization, User
 from flowforge.db.session import get_async_session
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -61,12 +61,18 @@ async def get_current_tenant_id(
         ) from exc
 
 
-async def get_tenant_or_404(
+async def require_member(
     tenant_id: UUID = Depends(get_current_tenant_id),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
-) -> Organization:
-    result = await session.execute(select(Organization).where(Organization.id == tenant_id))
-    organization = result.scalar_one_or_none()
-    if organization is None:
+) -> Membership:
+    result = await session.execute(
+        select(Membership).where(Membership.tenant_id == tenant_id, Membership.user_id == user.id)
+    )
+    membership = result.scalar_one_or_none()
+    if membership is not None:
+        return membership
+    organization = await session.execute(select(Organization).where(Organization.id == tenant_id))
+    if organization.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found.")
-    return organization
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Membership is required.")

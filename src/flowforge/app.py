@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
-from flowforge.api.rate_limiter import limiter, rate_limit_handler
 from flowforge.api.router import api_router
 from flowforge.core.config import get_settings
 from flowforge.core.logging import configure_logging
@@ -33,10 +30,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    application.add_middleware(SlowAPIMiddleware)
-    application.state.limiter = limiter
-    application.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-
     application.include_router(api_router, prefix=settings.api_v1_prefix)
 
     @application.get("/health", tags=["system"])

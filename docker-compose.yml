@@ -23,17 +23,6 @@ services:
       - postgres
       - redis
 
-  beat:
-    build: .
-    env_file:
-      - .env
-    command: celery -A flowforge.workers.celery_app.celery_app beat --loglevel=info
-    volumes:
-      - .:/app
-    depends_on:
-      - postgres
-      - redis
-
   postgres:
     image: postgres:16-alpine
     environment:
