@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "FlowForge"
+    app_name: str = "Handoff"
     environment: str = "local"
     debug: bool = False
     log_level: str = "INFO"
