@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flowforge-platform"
 version = "0.1.0"
-description = "FlowForge runs one workflow step off the request path, with membership checks and a committed job."
+description = "Handoff runs one workflow step off the request path, with membership checks and a committed job."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "Proprietary"}
-authors = [{name = "FlowForge"}]
+authors = [{name = "Darwin Cardenas Florez"}]
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",

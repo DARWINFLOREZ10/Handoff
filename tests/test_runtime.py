@@ -5,6 +5,6 @@ from flowforge.workers.celery_app import celery_app
 
 
 def test_entrypoints_are_loaded() -> None:
-    assert flowforge_app.title == "FlowForge"
+    assert flowforge_app.title == "Handoff"
     assert celery_app.main == "flowforge"
     assert "flowforge.deliver_job" in celery_app.tasks
